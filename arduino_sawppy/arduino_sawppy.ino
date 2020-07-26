@@ -12,20 +12,18 @@
 
 #include <math.h>
 #include "Arduino.h"
-#include "joydrive.h"
 #include "lewansoul.h"
 
 // Output select - only one of the following should be uncommented
-#define LEWANSOUL 1 // Output to LewanSoul serial bus servo commands
-//#define PRINTCMD 1 // Output to serial debug monitor
+#define LEWANSOUL 0 // Output to LewanSoul serial bus servo commands
+//#define PRINTCMD 0 // Output to serial debug monitor
+//define PRINTRC 1 // Output to serial debug monitor
 // Output select end
 
-#define STEERING_PIN 1 // Analog pin to control steering angle
-#define VELOCITY_PIN 0 // Analog pin to control speed
-#define INPLACE_BUTTON 2 // Button to trigger turn-in-place mode.
-
-// Initialize joystick module
-JoyDrive jd(STEERING_PIN, VELOCITY_PIN);
+#define STEERING_PIN 9 // Channel 1 of RC Reciever (Aileron)
+#define VELOCITY_PIN 10 // Channel 3 of RC Reciever (Throttle)
+#define INPLACE_BUTTON 3 // Channel 6 of RC Reciever (Momentary Switch)
+#define ENABLE_PIN 4 // Channel 7 of RC Reciever (Two-Position Switch)
 
 #ifdef LEWANSOUL
 LewanSoul lss(false);
@@ -203,16 +201,23 @@ void wheelsToDefault(int velocity)
 // Runs once upon powerup
 void setup()
 {
-  // Configure button pins
+  // Configure input pins
+  pinMode(STEERING_PIN, INPUT);
+  pinMode(VELOCITY_PIN, INPUT);
   pinMode(INPLACE_BUTTON, INPUT);
-  digitalWrite(INPLACE_BUTTON, HIGH); // Button pulls LOW when pressed
-
+  pinMode(ENABLE_PIN, INPUT);
+  
 #ifdef LEWANSOUL
   // LewanSoul serial servo code is taking over Serial port.
   lss.setup();
 #endif
 
 #ifdef PRINTCMD
+  // Use serial port to print our calculated commands
+  Serial.begin(9600);
+#endif
+
+#ifdef PRINTRC
   // Use serial port to print our calculated commands
   Serial.begin(9600);
 #endif
@@ -229,8 +234,12 @@ void setup()
 // Runs regularly as long as there is power to Arduino
 void loop()
 {
-  int steering; // -100 to 100, retrieved by JoyDrive::getSteering()
-  int velocity; // -100 to 100, retrieved by JoyDrive::getVelocity()
+  int enable; // -100 to 100, retrieved by 
+  int steering; // -100 to 100, retrieved by 
+  int velocity; // -100 to 100, retrieved by 
+  int turnTrigger; // -100 to 100, retrieved by 
+  bool triggerStateChange; // 0 or 1, retrieved by
+  
   int wheel; // Iterator index
   float turnCenterX; // Position of center of turn, which lies on the X axis
   float inRadians; // Angle calculation in radians
@@ -238,18 +247,46 @@ void loop()
   int invert; // Multiplier for implementing RoverWheel.rollServoInverted
   int referenceWheel; // Wheel used to calculate turnCenterX
 
-  bool triggerStateChange = (digitalRead(INPLACE_BUTTON) == LOW); // Read button that commands turn-in-place mode.
-  delay(100);
-  steering = jd.getSteering(); // Read steering potentiometer
-  delay(100);
-  velocity = jd.getVelocity(); // Read velocity potentiometer
+  // Input Logic
+  // Read button that commands turn-in-place mode.
+  turnTrigger = pulseIn(INPLACE_BUTTON, HIGH); // Read steering pin
+  if (turnTrigger > 1500){
+    triggerStateChange = true;
+  }
+  else{
+     triggerStateChange = false;
+  }
 
-#if PRINTCMD
+  steering = pulseIn(STEERING_PIN, HIGH); // Read steering pin
+  steering = constrain(map(steering, 1000, 2000, -100, 100), -100, 100);
+
+  //enable = pulseIn(ENABLE_PIN, HIGH); // Read steering pin
+  
+  velocity = pulseIn(VELOCITY_PIN, HIGH); // Read velocity pin
+  velocity = constrain(map(velocity, 1000, 2000, -100, 100), -100, 100);
+  
+  /*if (enable > 1500){
+    velocity = pulseIn(VELOCITY_PIN, HIGH); // Read velocity pin
+    velocity = constrain(map(velocity, 1000, 2000, -100, 100), -100, 100);
+  }
+
+  else{
+    velocity = 0;
+  }*/
+
+  delay(100);
+  
+
+#if PRINTRC
+  Serial.print("E");
+  Serial.print(enable);
   Serial.print("S");
   Serial.print(steering);
   Serial.print(" V");
   Serial.print(velocity);
-  Serial.print(" ");
+  Serial.print(" ST");
+  Serial.print(triggerStateChange);
+  Serial.println(" ");
 #endif
 
   // State changes can only be triggered when going slowly or stopped
